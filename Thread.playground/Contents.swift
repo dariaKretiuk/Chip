@@ -19,7 +19,6 @@ public struct Chip {
     
     public func sodering() {
         let soderingTime = chipType.rawValue
-        print("sleep - \(UInt32(soderingTime))")
         sleep(UInt32(soderingTime))
     }
 }
@@ -33,20 +32,24 @@ public class ChipStorage: ObservableObject {
     
     public func push(elementChip: Chip) {
         self.idxPUSH += 1
-        print("\(self.idxPUSH) -> before PUSH: \(stack.count)")
-        self.syncQueue.async(flags: .barrier) { [weak self] in
-            self?.stack.append(Chip.make())
-            print("\(self!.idxPUSH) -> after PUSH: \(self?.stack.count)")
+        self.syncQueue.async(flags: .barrier) {
+            print("--------- Добавился \(self.idxPUSH)й элемент ---------")
+            print("   размер стека до добавления: \(self.stack.count)")
+            self.stack.append(Chip.make())
+            print("размер стека после добавления: \(self.stack.count)")
+            print("-------------------------------------------------------\n")
         }
     }
     
     public func pop() -> Chip {
         var lastElement = Chip.make()
         self.idxPOP += 1
-        print("\(self.idxPOP) -> before POP: \(stack.count)")
         self.syncQueue.async(flags: .barrier) {
+            print("---------- Удалился \(self.idxPOP)й элемент ----------")
+            print("     размер стека до удаления: \(self.stack.count)")
             lastElement = self.stack.popLast()!
-            print("\(self.idxPOP) -> after POP: \(self.stack.count)")
+            print("  размер стека после удаления: \(self.stack.count)")
+            print("-------------------------------------------------------\n")
         }
         
         return lastElement
@@ -56,12 +59,19 @@ public class ChipStorage: ObservableObject {
 var storage = ChipStorage()
 
 class GenerationThread: Thread {
-    var timer = Timer()
-    var time = 0
-    let mainTime = 20
+    
+    private var timer = Timer()
+    private var time = Int()
+    private let mainTime: Int
+    private let timeInterval: Int
+    
+    init(mainTime: Int, timeInterval: Int) {
+        self.mainTime = mainTime
+        self.timeInterval = timeInterval
+    }
     
     override func main () {
-        self.timer = Timer(timeInterval: Double(2.0),
+        self.timer = Timer(timeInterval: Double(self.timeInterval),
                            target: self,
                            selector: #selector(updateTimer),
                            userInfo: nil,
@@ -76,16 +86,15 @@ class GenerationThread: Thread {
     }
     
     @objc func updateTimer() {
-        time += 2
+        time += timeInterval
+        print("ВРЕМЯ - \(time)\n")
         storage.push(elementChip: Chip.make())
-        print("time = \(time)")
         
-        if time == mainTime {
+        if time >= mainTime {
             timer.invalidate()
         }
     }
 }
-let generationThread = GenerationThread()
 
 class WorkThread: Thread {
     override func main() {
@@ -97,6 +106,8 @@ class WorkThread: Thread {
         }
     }
 }
+
+let generationThread = GenerationThread(mainTime: 20, timeInterval: 2)
 let workThread = WorkThread()
 
 generationThread.start()
@@ -104,13 +115,13 @@ workThread.start()
 
 DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
     generationThread.cancel()
-    print("----- GenerationThread isCancelled -----")
+    print("\n----- ПОТОК GenerationThread остановлен -----\n")
 }
 
 DispatchQueue.main.asyncAfter(deadline: .now() + 25) {
     if generationThread.isCancelled && storage.stack.count == 0 {
         workThread.isCancelled
     }
-    print("----- WorkThread isCancelled -----")
+    print("\n----- ПОТОК WorkThread остановлен -----------")
 }
 
